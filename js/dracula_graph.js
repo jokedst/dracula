@@ -297,6 +297,26 @@ Graph.Renderer.Raphael.prototype = {
     }
 };
 Graph.Layout = {};
+// Helper fundtion to calculate bounds
+Graph.Layout.layoutCalcBounds = function(graph) {
+        var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+
+        for (i in graph.nodes) {
+            var x = graph.nodes[i].layoutPosX;
+            var y = graph.nodes[i].layoutPosY;
+
+            if(x > maxx) maxx = x;
+            if(x < minx) minx = x;
+            if(y > maxy) maxy = y;
+            if(y < miny) miny = y;
+        }
+
+        graph.layoutMinX = minx;
+        graph.layoutMaxX = maxx;
+        graph.layoutMinY = miny;
+        graph.layoutMaxY = maxy;
+    };
+
 Graph.Layout.Spring = function(graph) {
     this.graph = graph;
     this.iterations = 500;
@@ -431,6 +451,143 @@ Graph.Layout.Spring.prototype = {
         node1.layoutForceX += attractiveForce * dx / d;
         node1.layoutForceY += attractiveForce * dy / d;
     }
+};
+
+Graph.Layout.Tree = function(graph, direction) {
+    this.graph = graph;
+	this.direction = direction;
+	this.revertedEdges = [];
+    this.layout();
+}
+
+Graph.Layout.Tree.prototype = {
+	layout: function() {
+		var roots = [];
+		for (i in this.graph.nodes) {
+			var node = this.graph.nodes[i];
+			node.layoutPosX = 0;
+			node.layoutPosY = 0;
+			var isroot = true;
+			for(var e in node.edges){
+				var edge = node.edges[e];
+				if(edge.source.id != node.id) {
+					isroot = false;
+					break;
+				}
+			}
+			if(isroot) {
+				roots.push(node);
+			}
+		}
+		for(var r in roots)
+			this.revertLoops(roots[r]);
+		for(var r in roots)
+			this.calcChildren(roots[r]);
+			
+		var levels = [];
+		for (i in this.graph.nodes) {
+			var node = this.graph.nodes[i];
+			var level = node.layoutPosY;
+			if(!levels[level]) levels[level] = [];
+			levels[level].push(node);
+		}
+		
+		//Start by a simple "put next to each other" layout
+		// TODO: minimise crossings 
+		// possibly add fake nodes á la Coffman–Graham
+		for(var l in levels) {
+			var count = 0;
+			for(var n in levels[l]) {
+				levels[l][n].layoutPosX = count++;
+			}
+		}
+		
+		// Restore reverted edges
+		for(var r in this.revertedEdges){
+			var edge = this.revertedEdges[r];
+			var temp = edge.target;
+			edge.target = edge.source;
+			edge.source = temp;
+		}
+		
+		if(this.direction) this.rotate(this.direction);
+		
+		Graph.Layout.layoutCalcBounds(this.graph);
+	},
+	
+	// Sets the weight (y-pos) to 1 + the highest node that points to me
+	// returns true if this node was modified, false otherwise
+	setWeight: function(node) {
+		var maxY = 0;
+		// Get the highest y-pos from all nodes that point to me
+		for(var i in node.edges){
+			var edge = node.edges[i];
+			if(edge.source.id != node.Id && edge.source.layoutPosY > maxY)
+				maxY = edge.source.layoutPosY;
+		}
+		if(node.layoutPosY != maxY + 1) {
+			node.layoutPosY = maxY + 1;
+			return true;
+		}
+		return false;
+	},
+	
+	calcChildren: function(node, visited) {	
+		//if(!visited) visited = [];
+		//visited.push(node.id);
+		for(var i in node.edges){
+			var edge = node.edges[i];
+			if(edge.source.id == node.id && edge.target.id != node.id){ // This points to a child
+				// if(visited.indexOf(edge.target.id) != -1){
+					// // Argh! A loop detected! Techincally we should reverse the edge, but for now I'm just ignoring it.
+					// continue;
+				// }
+				// Only calculate grandchildren if the child was changed, otherwise it's children doesn't need to be changed
+				if(this.setWeight(edge.target)) 
+					this.calcChildren(edge.target/*, visited.slice(0)*/);
+			}
+		}
+	},
+	
+	revertLoops: function(node, visited) {	
+		if(!visited) visited = [];
+		visited.push(node.id);
+		for(var i in node.edges){
+			var edge = node.edges[i];
+			if(edge.source.id == node.id && edge.target.id != node.id){ // This points to a child
+				if(visited.indexOf(edge.target.id) != -1){
+					// Argh! A loop detected!
+					this.revertedEdges.push(edge);
+					var temp = edge.target;
+					edge.target = edge.source;
+					edge.source = temp;
+					continue;
+				}
+				this.revertLoops(edge.target, visited.slice(0));
+			}
+		}
+	},
+	
+	rotate: function(direction) {		
+		for (i in this.graph.nodes) {
+            var node = this.graph.nodes[i];
+			switch(direction){
+			case 'up':
+				node.layoutPosY = -node.layoutPosY;
+				break;
+			case 'right':
+				var temp = node.layoutPosX;
+				node.layoutPosX = node.layoutPosY;
+				node.layoutPosY = temp;
+				break;
+			case 'left':
+				var temp = node.layoutPosX;
+				node.layoutPosX = -node.layoutPosY;
+				node.layoutPosY = temp;
+				break;
+			}
+		}
+	}
 };
 
 Graph.Layout.Ordered = function(graph, order) {
