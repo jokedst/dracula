@@ -129,7 +129,7 @@ g.addEdge("KonteringsFel", "EkoSysUpdDel2", {directed : true});
         }
         */
   /* layout the graph using the Spring layout implementation */
-  var layouter = new Graph.Layout.Tree(g);
+  var layouter = new Graph.Layout.Sugiyama(g);
 
   /* draw the graph using the RaphaelJS draw implementation */
 

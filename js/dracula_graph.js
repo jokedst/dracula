@@ -453,6 +453,11 @@ Graph.Layout.Spring.prototype = {
     }
 };
 
+// A Tree layout, best used for directed trees.
+// Loops and multiple roots are handled, I haven't tried any graphs with edges going from and to the same node, nor multigraphs or pseudographs.
+// Parameters:
+//  graph: the graph to work on
+//  direction: up,down,left,right - the direction of the graph. down is default.
 Graph.Layout.Tree = function(graph, direction) {
     this.graph = graph;
 	this.direction = direction;
@@ -463,6 +468,7 @@ Graph.Layout.Tree = function(graph, direction) {
 Graph.Layout.Tree.prototype = {
 	layout: function() {
 		var roots = [];
+		// Set all positions to 0 and find roots (i.e. nodes noone else is pointing to)
 		for (i in this.graph.nodes) {
 			var node = this.graph.nodes[i];
 			node.layoutPosX = 0;
@@ -475,15 +481,38 @@ Graph.Layout.Tree.prototype = {
 					break;
 				}
 			}
-			if(isroot) {
+			if(isroot)
 				roots.push(node);
+		}
+		
+		// Make sure all nodes are reachable from the roots. If not we have a graph without a natural root. Choose an arbitrary one (the first node we find).
+		// TODO: This won't work :( We need to find a node that spans as many as possible
+		var hasUnreachedNodes = true;
+		while(hasUnreachedNodes){
+			hasUnreachedNodes = false;
+			// Traverse the tree(s) from the roots and mark all as visited
+			for(var r in roots)
+				this.markTraversed(roots[r]);
+			// Check if we have unvisted nodes
+			for (i in this.graph.nodes) {
+				var node = this.graph.nodes[i];
+				// The first unvisited node is set as a root. We don't break the loop since we need to clear the flag on all nodes
+				if(!hasUnreachedNodes && !node.visitedFromRoots){ 
+					roots.push(node);
+					hasUnreachedNodes = true;
+				}
+				node.visitedFromRoots = false; // Clear the flag for next round
 			}
 		}
+		
+		// Get rid of loops by reverting edges. We'll restore those later
 		for(var r in roots)
 			this.revertLoops(roots[r]);
+		// Calcualte the depth (=level) of each node by a depth-first walk from the roots
 		for(var r in roots)
 			this.calcChildren(roots[r]);
-			
+		
+		// Create a lookup for each level with all nodes in that level
 		var levels = [];
 		for (i in this.graph.nodes) {
 			var node = this.graph.nodes[i];
@@ -510,9 +539,22 @@ Graph.Layout.Tree.prototype = {
 			edge.source = temp;
 		}
 		
+		// Rotate if user didn't want the default top-to-bottom layout
 		if(this.direction) this.rotate(this.direction);
 		
 		Graph.Layout.layoutCalcBounds(this.graph);
+	},
+	
+	markTraversed: function(node) {	
+		node.visitedFromRoots = true;
+		for(var i in node.edges){
+			var edge = node.edges[i];
+			if(edge.source.id == node.id && edge.target.id != node.id){ // This points to a child
+				// Only traverse grandchildren if the child hasn't already been visited
+				if(!node.visitedFromRoots) 
+					this.markTraversed(edge.target);
+			}
+		}
 	},
 	
 	// Sets the weight (y-pos) to 1 + the highest node that points to me
@@ -532,19 +574,13 @@ Graph.Layout.Tree.prototype = {
 		return false;
 	},
 	
-	calcChildren: function(node, visited) {	
-		//if(!visited) visited = [];
-		//visited.push(node.id);
+	calcChildren: function(node) {	
 		for(var i in node.edges){
 			var edge = node.edges[i];
 			if(edge.source.id == node.id && edge.target.id != node.id){ // This points to a child
-				// if(visited.indexOf(edge.target.id) != -1){
-					// // Argh! A loop detected! Techincally we should reverse the edge, but for now I'm just ignoring it.
-					// continue;
-				// }
 				// Only calculate grandchildren if the child was changed, otherwise it's children doesn't need to be changed
 				if(this.setWeight(edge.target)) 
-					this.calcChildren(edge.target/*, visited.slice(0)*/);
+					this.calcChildren(edge.target);
 			}
 		}
 	},
@@ -556,18 +592,21 @@ Graph.Layout.Tree.prototype = {
 			var edge = node.edges[i];
 			if(edge.source.id == node.id && edge.target.id != node.id){ // This points to a child
 				if(visited.indexOf(edge.target.id) != -1){
-					// Argh! A loop detected!
+					// Argh! A loop detected! Revert it and store it so we can restore it later
 					this.revertedEdges.push(edge);
 					var temp = edge.target;
 					edge.target = edge.source;
 					edge.source = temp;
 					continue;
 				}
+				// We slice (=clone) the array so each depth-first fork gets it's own array
+				// (tecnically this is not neccessary for the first fork, only the subsequent ones, but that would require some extra logic since any clone would have to be done before the first fork was traveresed)
 				this.revertLoops(edge.target, visited.slice(0));
 			}
 		}
 	},
 	
+	// Rotate the graph if the user wants to have left-to-right or something instead of default top-to-bottom
 	rotate: function(direction) {		
 		for (i in this.graph.nodes) {
             var node = this.graph.nodes[i];
@@ -765,8 +804,93 @@ Graph.Layout.TournamentTree.prototype = {
     }
 };
 
+// Sugiyama layout, a layered layout for directed trees, preferable with no or few loops
+// Pretty much a ripoff from this: https://code.google.com/p/modsl/source/browse/trunk/modsl-core/src/main/java/org/modsl/core/agt/layout/sugiyama/SugiyamaLayoutVisitor.java
+// Parameters:
+//  graph: the graph to work on
+//  direction: up,down,left,right - the direction of the graph. down is default.
+Graph.Layout.Sugiyama = function(graph, direction) {
+    this.graph = graph;
+	this.direction = direction;
+	this.revertedEdges = [];
+    this.layout();
+}
 
-
+Graph.Layout.Sugiyama.prototype = {
+	layout: function() {
+		this.calculateNodeDegrees();
+        this.removeCycles();
+        // this.splitIntoLayers();
+        // this.insertDummies();
+        // this.stack.initIndexes();
+        // this.stack.reduceCrossings();
+        // this.undoRemoveCycles();
+        // this.stack.layerHeights();
+        // this.stack.xPos();
+		
+		this.layoutCalcBounds();
+	},
+	
+	calculateNodeDegrees: function()
+	{
+		for (i = this.graph.nodes.length; i--;) {
+		//for (i in this.graph.nodes) {
+			var node = this.graph.nodes[i];
+			node.inDegree = 0;
+			node.outDegree = 0;
+			for (e = node.edges.length; e--;) {
+			//for(var e in node.edges){
+				var edge = node.edges[e];
+				if(edge.target.id == node.id && edge.source.id != node.id)
+					node.inDegree++;
+				else if(edge.source.id != node.id && edge.target.id != node.id)
+					node.outDegree++;
+			}			
+			node.inMinusOutDegree = node.inDegree*2 - node.outDegree;
+		}
+	}
+	
+	removeCycles: function()
+	{		
+		var sortedNodes = this.graph.nodes.sort(function(a,b){ return a.inMinusOutDegree - b.inMinusOutDegree; });
+		var removed = [];
+		var length = sortedNodes.length;
+		for(var i = 0; i < length; i++) {
+			var node = this.graph.nodes[i];
+			var inEdges = [];
+			var outEdges = []
+			for (e = node.edges.length; e--;) {
+				var edge = node.edges[e];
+				if(edge.target.id == node.id && edge.source.id != node.id)
+					inEdges.push(edge);
+				else if(edge.source.id != node.id && edge.target.id != node.id)
+					outEdges.push(edge);
+			}
+			for(n = inEdges.length; n--) {
+				var inEdge = inEdges[n];
+				if(removed.indexOf(inEdge) == -1) {
+					// Revert edge
+					this.revertedEdges.push(inEdge);
+					var temp = inEdge.target;
+					inEdge.target = inEdge.source;
+					inEdge.source = temp;
+					removed.push(inEdge);
+				}
+			}
+			for(n = outEdges.length; n--){
+				var outEdge = outEdges[n];
+				if(removed.indexOf(outEdge) == -1)
+					removed.push(outEdge);
+			}
+			// Idea - update the node.inMinusOutDegree of the other end of a reverted edge, then resort the remaining nodes.
+			// That way we minimise the number of unneccessary reverts (?)
+		}
+	}
+	
+	getInEdges: function(node){
+		
+	}
+}
 
 /*
  * usefull JavaScript extensions,
