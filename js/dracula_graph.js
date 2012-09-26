@@ -31,13 +31,27 @@ AbstractEdge.prototype = {
     hide: function() {
         this.connection.fg.hide();
         this.connection.bg && this.bg.connection.hide();
-    }
+    }, 
+	
+	// return distance (in hops) between nodes or bends this edge connects
+	getDistance: function(item1, item2){
+		var item1index = (item1 == this.source ? -1 : -2);
+		var item2index = (item2 == this.source ? -1 : -2);
+		var t = this.bends.indexOf(item1);
+		item1index = (t > -1 ? t : item1index);
+		t = this.bends.indexOf(item2);
+		item2index = (t > -1 ? t : item2index);
+        item1index = (item1 == this.target ? this.bends.length : item1index);
+        item2index = (item2 == this.target ? this.bends.length : item2index);
+        return (item1index > -2 && item2index > -2) ? Math.abs(item2index - item1index) : 2000000000;
+	}	
 };
 var EdgeFactory = function() {
     this.template = new AbstractEdge();
     this.template.style = new Object();
     this.template.style.directed = false;
     this.template.weight = 1;
+	this.template.bends = [];
 };
 EdgeFactory.prototype = {
     build: function(source, target) {
@@ -138,10 +152,39 @@ Graph.Node = function(id, node){
         for(i in this.edges)
             (this.edges[i].source.id == id || this.edges[i].target == id) && this.edges[i].show && this.edges[i].show();
     };
+	
+	// Checks if this node is connected to another item (node or bend)
+	node.isConnectedTo = function(item){
+		for(var e = this.edges.length; e--;){
+			if(this.edges[e].getDistance(this, item) == 1)
+				return true;
+		}
+		return false;
+	}
     return node;
 };
 Graph.Node.prototype = {
 };
+
+
+/*
+ * Bend
+ */
+Graph.Bend = function(parent, id){
+	this.parent = parent;
+	this.id = id;
+}
+
+Graph.Bend.prototype = {
+	// Checks if this bend is connected to another item (node or bend)
+	isConnectedTo: function(item){
+        if (this.parent.getDistance(this, item) == 1) {
+            return true;
+        }
+        return false;
+	}
+}
+
 
 /*
  * Renderer base class
@@ -824,10 +867,12 @@ Graph.Layout.Sugiyama = function(graph, direction) {
     this.graph = graph;
 	this.direction = direction;
 	this.revertedEdges = [];
-	this.nodecount = 0;
-	for(var node in this.graph.nodes)
-		this.nodecount++;
-		
+	this.nodeCount = 0;
+	this.nodeList = [];
+	for(var node in this.graph.nodes){
+		this.nodeCount++;
+		this.nodeList.push(this.graph.nodes[node]);
+	}
     this.layout();
 }
 
@@ -836,9 +881,9 @@ Graph.Layout.Sugiyama.prototype = {
 		this.calculateNodeDegrees();
         this.removeCycles();
         this.splitIntoLayers();
-        // this.insertDummies();
-        // this.stack.initIndexes();
-        // this.stack.reduceCrossings();
+        this.insertDummies();
+        this.stack.initIndexes();
+        this.stack.reduceCrossings();
         // this.undoRemoveCycles();
         // this.stack.layerHeights();
         // this.stack.xPos();
@@ -911,7 +956,34 @@ Graph.Layout.Sugiyama.prototype = {
 	splitIntoLayers: function()
 	{
 		var sorted = this.topologicalSort();
-		//TODO
+		var levelMap = {};
+		for(i = this.nodeCount; i--;){			
+			levelMap[this.nodeList[i].id] = 0;
+		}
+		
+		var graphHeight = 1;
+		for(i = 0; i < sorted.length; i++){
+			var sourceNode = sorted[i];
+			for(e = sourceNode.edges.length; e--;){
+				var edgeOut = sourceNode.edges[e];
+				if(edgeOut.source.id == sourceNode.id && edgeOut.source.id != edgeOut.target.id){
+					var targetNode = edgeOut.target;
+					// TODO: Check for duplicate edges, if any increase distance to 2
+					var destance = 1;
+					levelMap[targetNode.id] = Math.max(levelMap[sourceNode.id] + destance, levelMap[targetNode.id]);
+					graphHeight = Math.max(graphHeight, levelMap[targetNode.id] + 1);
+				}				
+			}
+		}
+		this.stack = new Graph.Layout.SugiyamaLayerStack(graphHeight, sorted.length);
+		for(i = 0; i < sorted.length; i++){
+			var sourceNode = sorted[i];
+			// DEBUG: set a pos for this node
+			sourceNode.layoutPosY = levelMap[sorted[i].id];
+			sourceNode.layoutPosX = i;
+			// END DEBUG
+			this.stack.add(sorted[i], levelMap[sorted[i].id]);
+		}
 	},
 	
 	topologicalSort: function()
@@ -942,7 +1014,7 @@ Graph.Layout.Sugiyama.prototype = {
 		}
 		
 		// Sanety check, don't know if necessary
-		if(sortedResult.length != this.nodecount)
+		if(sortedResult.length != this.nodeCount)
 			throw "Topological sort failed";
 		
 		return sortedResult;
@@ -967,6 +1039,22 @@ Graph.Layout.Sugiyama.prototype = {
 		return roots;
 	},
 	
+	insertDummies: function(){
+		var bendId = 0;
+		for(e = this.graph.edges.length; e--;){
+			var edge = this.graph.edges[e];
+			var fromLayer = this.stack.nodeMap[edge.source.id];
+			var toLayer = this.stack.nodeMap[edge.target.id];
+			if(toLayer - fromLayer > 1){
+                for (var layer = fromLayer + 1; layer < toLayer; layer++) {
+                    var bend = new Graph.Bend(edge, 'b' + bendId++);
+                    edge.bends.push(bend);
+                    this.stack.add(bend, layer);
+                }
+			}
+		}
+	},
+	
 	restoreRevertedEdges: function(node){
 		for(i = this.revertedEdges.length; i--;){
 			var edge = this.revertedEdges[i];
@@ -976,6 +1064,86 @@ Graph.Layout.Sugiyama.prototype = {
 		}
 	}
 }
+
+Graph.Layout.SugiyamaLayerStack = function(height, nodeQty) {
+	this.MAX_SWEEPS = 100;
+	this.X_SEP = 40;
+	this.Y_SEP = 75;
+	this.layers = [];
+	for(var i = 0; i < height; i++ ){
+		this.layers.push([]);		
+	}
+	this.nodeMap = {};
+}
+
+Graph.Layout.SugiyamaLayerStack.prototype = {
+	add: function(item, layerIndex){
+		this.layers[layerIndex].push(item);
+		this.nodeMap[item.id] = layerIndex;
+	},
+	
+	// The original algorithm had some strange sorting here, but it basically sorted on randomly set values... So I'll just give them a random initial order
+	initIndexes: function(){
+		for(var l = this.layers.length; l--;){
+			var layer = this.layers[l];
+			for(var l2 = 0; l2 < layer.length; l2++)
+				layer[l2].index = l2;
+		}
+	},
+	
+	reduceCrossings: function(){
+		for (var round = 0; round < this.MAX_SWEEPS; round++) {
+            if (round % 2 == 0) {
+                for (var l = 0; l < this.layers.length - 1; l++) {
+                    this.reduceCrossings2L(l, l + 1);
+                }
+            } else {
+                for (var l = this.layers.length - 1; l > 0; l--) {
+                    this.reduceCrossings2L(l, l - 1);
+                }
+            }
+        }
+	},
+	
+	reduceCrossings2L: function(staticIndex, flexIndex){
+		var flex = this.layers[flexIndex];
+		for(var i in flex){
+			var item = flex[i];
+			var neighbors = this.getConnectedTo(item, staticIndex);
+			item.index = this.barycenter(neighbors);
+		}
+		// Sort and update indexes
+		flex.sort(function(a,b){return a.index - b.index;});
+		this.setOrderedIndexes(flex);
+	},
+	
+	setOrderedIndexes: function(list){
+		for(var i = 0; i < list.length ; i++)
+			list[i].index = i;
+	},
+	
+	getConnectedTo: function(item, layerIndex){
+		var linked = [];
+		if(layerIndex < this.layers.length && layerIndex >= 0){
+			for(var i = this.layers[layerIndex].length; i--;){
+				var otherItem = this.layers[layerIndex][i];
+				if(item.isConnectedTo(otherItem)){
+					linked.push(otherItem);
+				}
+			}
+		}
+		return linked;
+	},
+	
+	barycenter: function(items){
+		if(!items.length) return 0;
+		var indexSum = 0;
+		for(var i = items.length; i--;)
+			indexSum += items[i].index;
+		return Math.round(indexSum / items.length);
+	}
+}
+
 
 /*
  * usefull JavaScript extensions,
