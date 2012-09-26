@@ -2,7 +2,7 @@ var redraw;
 
 window.onload = function() {
   var width  = 800;//$('#canvas').width();
-  var height = 1600;//$('#canvas').height() - 100;
+  var height = 600;//$('#canvas').height() - 100;
 
   /* Showcase of the Bellman-Ford search algorithm finding shortest paths
      from one point to every node */
@@ -61,64 +61,73 @@ window.onload = function() {
   
   // // loop!
   // g.addEdge("Madrid"   , "Berlin", {directed : true});
-g.addNode('Ankommen' );
-g.addNode('Prickad'  , { render : render });
-g.addNode('Konterad'  , { render : render });
-g.addNode('EkoSysUpd'  , { render : render });
-g.addNode('PrisKontrollerad'  , { render : render });
-g.addNode('CodaKvitterad'  , { render : render });
-g.addNode('KonteringsFel'  , { render : render });
-g.addNode('Dubblett'  , { render : render });
-g.addNode('Makulerad'  , { render : render });
-g.addNode('Attesterad'  , { render : render });
-g.addNode('Strul'  , { render : render });
-g.addNode('Aterstalld'  , { render : render });
-g.addNode('FT'  , { render : render });
-g.addNode('NyKundfaktura'  , { render : render });
-g.addNode('KundfakturaKonterad'  , { render : render });
-g.addNode('KundfakturaEkoSysUpd'  , { render : render });
-g.addNode('KundfakturaSkickad'  , { render : render });
-g.addNode('KundfakturaKonteringsfel'  , { render : render });
-g.addNode('KundfakturaCodakvitterad'  , { render : render });
-g.addNode('Slut'  , { render : render });
-g.addNode('EkoSysUpdDel2'  , { render : render });
-g.addNode('KundfakturaGodkand'  , { render : render });
+  
+  g.addNode('One'  , { render : render });
+  g.addNode('Two'  , { render : render });
+  g.addNode('Three'  , { render : render });
+  
+  g.addEdge("One", "Two", {directed : true});
+  g.addEdge("Two", "Three", {directed : true});
+  g.addEdge("Three", "One", {directed : true});
+  
+// g.addNode('Ankommen' );
+// g.addNode('Prickad'  , { render : render });
+// g.addNode('Konterad'  , { render : render });
+// g.addNode('EkoSysUpd'  , { render : render });
+// g.addNode('PrisKontrollerad'  , { render : render });
+// g.addNode('CodaKvitterad'  , { render : render });
+// g.addNode('KonteringsFel'  , { render : render });
+// g.addNode('Dubblett'  , { render : render });
+// g.addNode('Makulerad'  , { render : render });
+// g.addNode('Attesterad'  , { render : render });
+// g.addNode('Strul'  , { render : render });
+// g.addNode('Aterstalld'  , { render : render });
+// g.addNode('FT'  , { render : render });
+// g.addNode('NyKundfaktura'  , { render : render });
+// g.addNode('KundfakturaKonterad'  , { render : render });
+// g.addNode('KundfakturaEkoSysUpd'  , { render : render });
+// g.addNode('KundfakturaSkickad'  , { render : render });
+// g.addNode('KundfakturaKonteringsfel'  , { render : render });
+// g.addNode('KundfakturaCodakvitterad'  , { render : render });
+// g.addNode('Slut'  , { render : render });
+// g.addNode('EkoSysUpdDel2'  , { render : render });
+// g.addNode('KundfakturaGodkand'  , { render : render });
 
   
-g.addEdge("Ankommen", "Prickad", {directed : true});
-g.addEdge("Dubblett", "Ankommen", {directed : true});
-g.addEdge("Dubblett", "Makulerad", {directed : true});
-g.addEdge("Ankommen", "Makulerad", {directed : true});
-g.addEdge("Ankommen", "Attesterad", {directed : true});
-g.addEdge("Attesterad", "Prickad", {directed : true});
-g.addEdge("Strul", "Ankommen", {directed : true});
-g.addEdge("Strul", "Makulerad", {directed : true});
-g.addEdge("Makulerad", "Aterstalld", {directed : true});
-g.addEdge("Aterstalld", "Ankommen", {directed : true});
-g.addEdge("Aterstalld", "Dubblett", {directed : true});
-g.addEdge("Aterstalld", "Strul", {directed : true});
-g.addEdge("KonteringsFel", "Makulerad", {directed : true});
-g.addEdge("Aterstalld", "KonteringsFel", {directed : true});
-g.addEdge("Ankommen", "Strul", {directed : true});
-g.addEdge("Ankommen", "PrisKontrollerad", {directed : true});
-g.addEdge("KundfakturaEkoSysUpd", "KundfakturaSkickad", {directed : true});
-g.addEdge("NyKundfaktura", "KundfakturaKonteringsfel", {directed : true});
-g.addEdge("KundfakturaSkickad", "KundfakturaCodakvitterad", {directed : true});
-g.addEdge("Prickad", "PrisKontrollerad", {directed : true});
-g.addEdge("PrisKontrollerad", "Slut", {directed : true});
-g.addEdge("PrisKontrollerad", "KonteringsFel", {directed : true});
-g.addEdge("PrisKontrollerad", "EkoSysUpd", {directed : true});
-g.addEdge("EkoSysUpd", "EkoSysUpdDel2", {directed : true});
-g.addEdge("EkoSysUpdDel2", "Slut", {directed : true});
-g.addEdge("KonteringsFel", "EkoSysUpd", {directed : true});
-g.addEdge("NyKundfaktura", "KundfakturaGodkand", {directed : true});
-g.addEdge("KundfakturaGodkand", "KundfakturaEkoSysUpd", {directed : true});
-g.addEdge("NyKundfaktura", "KundfakturaEkoSysUpd", {directed : true});
-g.addEdge("KundfakturaGodkand", "KundfakturaKonteringsfel", {directed : true});
-g.addEdge("KundfakturaKonteringsfel", "KundfakturaEkoSysUpd", {directed : true});
-g.addEdge("PrisKontrollerad", "EkoSysUpdDel2", {directed : true});
-g.addEdge("KonteringsFel", "Slut", {directed : true});
-g.addEdge("KonteringsFel", "EkoSysUpdDel2", {directed : true});
+// g.addEdge("Ankommen", "Prickad", {directed : true});
+// g.addEdge("Dubblett", "Ankommen", {directed : true});
+// g.addEdge("Dubblett", "Makulerad", {directed : true});
+// g.addEdge("Ankommen", "Makulerad", {directed : true});
+// g.addEdge("Ankommen", "Attesterad", {directed : true});
+// g.addEdge("Attesterad", "Prickad", {directed : true});
+// g.addEdge("Strul", "Ankommen", {directed : true});
+// g.addEdge("Strul", "Makulerad", {directed : true});
+// g.addEdge("Makulerad", "Aterstalld", {directed : true});
+// g.addEdge("Aterstalld", "Ankommen", {directed : true});
+// g.addEdge("Aterstalld", "Dubblett", {directed : true});
+// g.addEdge("Aterstalld", "Strul", {directed : true});
+// g.addEdge("KonteringsFel", "Makulerad", {directed : true});
+// g.addEdge("Aterstalld", "KonteringsFel", {directed : true});
+// g.addEdge("Ankommen", "Strul", {directed : true});
+// g.addEdge("Ankommen", "PrisKontrollerad", {directed : true});
+// g.addEdge("KundfakturaEkoSysUpd", "KundfakturaSkickad", {directed : true});
+// g.addEdge("NyKundfaktura", "KundfakturaKonteringsfel", {directed : true});
+// g.addEdge("KundfakturaSkickad", "KundfakturaCodakvitterad", {directed : true});
+// g.addEdge("Prickad", "PrisKontrollerad", {directed : true});
+// g.addEdge("PrisKontrollerad", "Slut", {directed : true});
+// g.addEdge("PrisKontrollerad", "KonteringsFel", {directed : true});
+// g.addEdge("PrisKontrollerad", "EkoSysUpd", {directed : true});
+// g.addEdge("EkoSysUpd", "EkoSysUpdDel2", {directed : true});
+// g.addEdge("EkoSysUpdDel2", "Slut", {directed : true});
+// g.addEdge("KonteringsFel", "EkoSysUpd", {directed : true});
+// g.addEdge("NyKundfaktura", "KundfakturaGodkand", {directed : true});
+// g.addEdge("KundfakturaGodkand", "KundfakturaEkoSysUpd", {directed : true});
+// g.addEdge("NyKundfaktura", "KundfakturaEkoSysUpd", {directed : true});
+// g.addEdge("KundfakturaGodkand", "KundfakturaKonteringsfel", {directed : true});
+// g.addEdge("KundfakturaKonteringsfel", "KundfakturaEkoSysUpd", {directed : true});
+// g.addEdge("PrisKontrollerad", "EkoSysUpdDel2", {directed : true});
+// g.addEdge("KonteringsFel", "Slut", {directed : true});
+// g.addEdge("KonteringsFel", "EkoSysUpdDel2", {directed : true});
   
   
   /* random edge weights (our undirected graph is modelled as a bidirectional graph) */

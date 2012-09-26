@@ -48,6 +48,18 @@ EdgeFactory.prototype = {
     }
 };
 
+
+/*
+ * Queue class. A bit faster than shift:ing an array. From http://code.stephenmorley.org/javascript/queues/ (CC0 licence, i.e. public domain)
+ */
+function Queue(){var _1=[];var _2=0;
+this.getLength=function(){return (_1.length-_2);};
+this.isEmpty=function(){return (_1.length==0);};
+this.enqueue=function(_3){_1.push(_3);};
+this.dequeue=function(){if(_1.length==0){return undefined;}var _4=_1[_2];if(++_2*2>=_1.length){_1=_1.slice(_2);_2=0;}return _4;};
+this.peek=function(){return (_1.length>0?_1[_2]:undefined);};
+};
+
 /*
  * Graph
  */
@@ -542,8 +554,7 @@ Graph.Layout.Tree.prototype = {
 		// Rotate if user didn't want the default top-to-bottom layout
 		if(this.direction) this.rotate(this.direction);
 		
-		Graph.Layout.layoutCalcBounds(this.graph);
-	},
+		Graph.Layout.layoutCalcBounds(this.graph);},
 	
 	markTraversed: function(node) {	
 		node.visitedFromRoots = true;
@@ -813,6 +824,10 @@ Graph.Layout.Sugiyama = function(graph, direction) {
     this.graph = graph;
 	this.direction = direction;
 	this.revertedEdges = [];
+	this.nodecount = 0;
+	for(var node in this.graph.nodes)
+		this.nodecount++;
+		
     this.layout();
 }
 
@@ -820,7 +835,7 @@ Graph.Layout.Sugiyama.prototype = {
 	layout: function() {
 		this.calculateNodeDegrees();
         this.removeCycles();
-        // this.splitIntoLayers();
+        this.splitIntoLayers();
         // this.insertDummies();
         // this.stack.initIndexes();
         // this.stack.reduceCrossings();
@@ -828,13 +843,14 @@ Graph.Layout.Sugiyama.prototype = {
         // this.stack.layerHeights();
         // this.stack.xPos();
 		
-		this.layoutCalcBounds();
+		this.restoreRevertedEdges();
+		Graph.Layout.layoutCalcBounds(this.graph);
 	},
 	
 	calculateNodeDegrees: function()
 	{
-		for (i = this.graph.nodes.length; i--;) {
-		//for (i in this.graph.nodes) {
+		//for (i = this.graph.nodes.length; i--;) {
+		for (i in this.graph.nodes) {
 			var node = this.graph.nodes[i];
 			node.inDegree = 0;
 			node.outDegree = 0;
@@ -843,33 +859,38 @@ Graph.Layout.Sugiyama.prototype = {
 				var edge = node.edges[e];
 				if(edge.target.id == node.id && edge.source.id != node.id)
 					node.inDegree++;
-				else if(edge.source.id != node.id && edge.target.id != node.id)
+				else if(edge.source.id == node.id && edge.target.id != node.id)
 					node.outDegree++;
 			}			
 			node.inMinusOutDegree = node.inDegree*2 - node.outDegree;
 		}
-	}
+	},
 	
 	removeCycles: function()
-	{		
-		var sortedNodes = this.graph.nodes.sort(function(a,b){ return a.inMinusOutDegree - b.inMinusOutDegree; });
+	{
+		var nodeList = [];
+		for(var node in this.graph.nodes)
+			nodeList.push(this.graph.nodes[node]);
+			
+		var sortedNodes = nodeList.sort(function(a,b){ return a.inMinusOutDegree - b.inMinusOutDegree; });
 		var removed = [];
 		var length = sortedNodes.length;
 		for(var i = 0; i < length; i++) {
-			var node = this.graph.nodes[i];
+			var node = sortedNodes[i];
 			var inEdges = [];
 			var outEdges = []
 			for (e = node.edges.length; e--;) {
 				var edge = node.edges[e];
 				if(edge.target.id == node.id && edge.source.id != node.id)
 					inEdges.push(edge);
-				else if(edge.source.id != node.id && edge.target.id != node.id)
+				else if(edge.source.id == node.id && edge.target.id != node.id)
 					outEdges.push(edge);
 			}
-			for(n = inEdges.length; n--) {
+			for(n = inEdges.length; n--;) {
 				var inEdge = inEdges[n];
 				if(removed.indexOf(inEdge) == -1) {
 					// Revert edge
+					// inEdge.source.inMinusOutDegree += 3; // Correct the inMinusOutDegree value
 					this.revertedEdges.push(inEdge);
 					var temp = inEdge.target;
 					inEdge.target = inEdge.source;
@@ -877,7 +898,7 @@ Graph.Layout.Sugiyama.prototype = {
 					removed.push(inEdge);
 				}
 			}
-			for(n = outEdges.length; n--){
+			for(n = outEdges.length; n--;){
 				var outEdge = outEdges[n];
 				if(removed.indexOf(outEdge) == -1)
 					removed.push(outEdge);
@@ -885,10 +906,74 @@ Graph.Layout.Sugiyama.prototype = {
 			// Idea - update the node.inMinusOutDegree of the other end of a reverted edge, then resort the remaining nodes.
 			// That way we minimise the number of unneccessary reverts (?)
 		}
-	}
+	},
 	
-	getInEdges: function(node){
+	splitIntoLayers: function()
+	{
+		var sorted = this.topologicalSort();
+		//TODO
+	},
+	
+	topologicalSort: function()
+	{
+		var roots = this.getRootsQueue();
+		var sortedResult = [];
+		var removed = [];
 		
+		while(!roots.isEmpty()){
+			var node = roots.dequeue();
+			sortedResult.push(node);
+			for(e = node.edges.length;e--;){
+				var edge = node.edges[e];
+				if(edge.source.id == node.id && edge.target.id != node.id){ // Out-edge
+					removed.push(edge);
+					var allEdgesRemoved = true;
+					// Check if the targets has any mode "in" edges left
+					for(e2 = edge.target.edges.length; e2--;) {
+						var edge2 = edge.target.edges[e2];
+						// In-edge that hasn't been removed
+						if(edge2.target.id == edge.target.id && edge2.source.id != edge2.target.id && removed.indexOf(edge2) == -1)
+							allEdgesRemoved = false;
+					}
+					if(allEdgesRemoved)
+						roots.enqueue(edge.target);
+				}
+			}
+		}
+		
+		// Sanety check, don't know if necessary
+		if(sortedResult.length != this.nodecount)
+			throw "Topological sort failed";
+		
+		return sortedResult;
+	},
+	
+	getRootsQueue: function()
+	{
+		var roots = new Queue();
+		for (i in this.graph.nodes) {
+			var node = this.graph.nodes[i];
+			var isroot = true;
+			for(var e in node.edges){
+				var edge = node.edges[e];
+				if(edge.source.id != node.id) {
+					isroot = false;
+					break;
+				}
+			}
+			if(isroot)
+				roots.enqueue(node);
+		}
+		return roots;
+	},
+	
+	restoreRevertedEdges: function(node){
+		for(i = this.revertedEdges.length; i--;){
+			var edge = this.revertedEdges[i];
+			var temp = edge.target;
+			edge.target = edge.source;
+			edge.source = temp;
+		}
 	}
 }
 
